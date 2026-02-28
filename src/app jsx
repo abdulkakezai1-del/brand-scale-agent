@@ -1,0 +1,526 @@
+import { useState, useRef, useEffect } from "react";
+
+const SYSTEM_PROMPT = `You are an elite direct-response brand scaling strategist specializing in DTC, e-commerce, and performance marketing.
+
+Your expertise includes:
+- Meta ad optimization (creative testing, scaling, budget allocation)
+- Offer psychology and value stacking
+- Creative strategy and hook engineering
+- Visual branding analysis
+- Funnel optimization
+- Conversion rate optimization (CRO)
+- Audience sophistication levels
+- Market awareness stages
+- Performance metrics (CPM, CTR, CPC, CPA, ROAS, LTV)
+- Brand positioning and differentiation
+- Diagnosing scaling bottlenecks
+- Teaching advanced thinking frameworks
+
+You think like: a performance marketer, a creative director, a behavioral psychologist, a growth operator, and a systems strategist.
+
+You do NOT give generic advice. You diagnose. You prioritize. You structure.
+
+CORE OPERATING RULES:
+1. Always identify root problems, not surface-level symptoms.
+2. Separate strategic issues from tactical issues.
+3. Prioritize highest ROI actions first.
+4. When analyzing brands, break down: Positioning, Differentiation, Offer structure, Audience targeting logic, Funnel flow, Scaling bottlenecks.
+5. Always provide: Diagnosis → Why it matters → Specific improvement steps → 30-day roadmap.
+
+MODES:
+- AUDIT: Full structured brand audit: Positioning → Offer → Creative → Funnel → Scaling → 80/20 fixes → 30-day roadmap
+- CREATIVE OPTIMIZATION: Hook effectiveness, psychological triggers, 3 upgraded hooks, 3 angles, 1 full rewrite
+- MEDIA BUYER: Diagnose bottlenecks, identify fatigue vs targeting vs creative, budget reallocation, kill/scale decisions
+- STRATEGIC PLAN: Testing structure, creative pipeline, offer optimization, KPIs, risk management, weekly execution
+- COMPETITOR ANALYSIS: Positioning, value prop, emotional triggers, creative angles, funnel structure, weaknesses
+- TEACH ME: Frameworks, why top brands win, pattern recognition drills, challenge assumptions
+
+All outputs must: Be structured, be actionable, avoid fluff, avoid generic advice, focus on leverage, think in systems not hacks.
+
+Format responses with clear sections using markdown-style headers (## and ###) and bullet points. Be direct and assume the user wants top 5% level thinking.`;
+
+const MODES = [
+  { id: "AUDIT", label: "Full Brand Audit", icon: "◈", color: "#FF4D00", desc: "Complete brand teardown & roadmap" },
+  { id: "CREATIVE OPTIMIZATION", label: "Creative Optimizer", icon: "◎", color: "#00E5FF", desc: "Hook engineering & ad rewrites" },
+  { id: "MEDIA BUYER", label: "Media Buyer", icon: "◇", color: "#FFD600", desc: "Metrics diagnosis & scaling decisions" },
+  { id: "STRATEGIC PLAN", label: "Strategic Plan", icon: "◆", color: "#76FF03", desc: "Full scaling roadmap & KPIs" },
+  { id: "COMPETITOR ANALYSIS", label: "Competitor Analysis", icon: "◉", color: "#E040FB", desc: "Reverse-engineer winning brands" },
+  { id: "TEACH ME", label: "Teach Me", icon: "◐", color: "#FF6D00", desc: "Frameworks & pattern recognition" },
+];
+
+const STARTERS = {
+  AUDIT: "Please do a full brand audit.",
+  "CREATIVE OPTIMIZATION": "Here's my ad script/hook: [PASTE YOUR CREATIVE]. Optimize it.",
+  "MEDIA BUYER": "My Meta metrics: CPM $[X], CTR [X]%, CPC $[X], CPA $[X], ROAS [X]x. Spend is $[X]/day. Diagnose my bottleneck.",
+  "STRATEGIC PLAN": "I want to scale from $[X]/month to $[X]/month in 90 days. Build my plan.",
+  "COMPETITOR ANALYSIS": "Analyze [BRAND NAME / URL]. Tear down their positioning, funnel, and creative strategy.",
+  "TEACH ME": "Teach me [TOPIC — e.g. hook engineering / offer stacking / audience sophistication]. I want top 5% level thinking.",
+};
+
+const PROFILE_FIELDS = [
+  { key: "brandName", label: "Brand Name", placeholder: "e.g. Flux Supplements" },
+  { key: "product", label: "Product / Offer", placeholder: "e.g. Pre-workout for busy professionals" },
+  { key: "audience", label: "Target Audience", placeholder: "e.g. Men 28-45, gym-goers, high income" },
+  { key: "revenue", label: "Monthly Revenue", placeholder: "e.g. $45,000/mo" },
+  { key: "adSpend", label: "Monthly Ad Spend", placeholder: "e.g. $8,000/mo on Meta" },
+  { key: "mainChannel", label: "Main Channel", placeholder: "e.g. Meta Ads, TikTok, Email" },
+  { key: "biggestChallenge", label: "Biggest Challenge", placeholder: "e.g. CPA keeps rising, creative fatigue" },
+];
+
+function parseMarkdown(text) {
+  const lines = text.split("\n");
+  const result = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith("### ")) {
+      result.push(<h3 key={i} style={{ color: "#FF4D00", fontSize: "12px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: "18px", marginBottom: "6px", fontFamily: "'Space Mono', monospace" }}>{line.slice(4)}</h3>);
+    } else if (line.startsWith("## ")) {
+      result.push(<h2 key={i} style={{ color: "#fff", fontSize: "15px", fontWeight: 700, marginTop: "22px", marginBottom: "8px", borderLeft: "3px solid #FF4D00", paddingLeft: "12px", fontFamily: "'Space Mono', monospace" }}>{line.slice(3)}</h2>);
+    } else if (line.startsWith("**") && line.endsWith("**") && !line.slice(2, -2).includes("**")) {
+      result.push(<p key={i} style={{ color: "#FFD600", fontWeight: 700, fontSize: "13px", marginBottom: "4px" }}>{line.slice(2, -2)}</p>);
+    } else if (line.startsWith("- ") || line.startsWith("• ")) {
+      const content = line.slice(2);
+      const parts = content.split(/\*\*(.*?)\*\*/g);
+      result.push(
+        <div key={i} style={{ display: "flex", gap: "8px", marginBottom: "4px", paddingLeft: "4px" }}>
+          <span style={{ color: "#FF4D00", flexShrink: 0 }}>›</span>
+          <span style={{ color: "#C8C8C8", fontSize: "13px", lineHeight: "1.6" }}>
+            {parts.map((p, j) => j % 2 === 1 ? <strong key={j} style={{ color: "#fff" }}>{p}</strong> : p)}
+          </span>
+        </div>
+      );
+    } else if (line.match(/^\d+\.\s/)) {
+      const content = line.replace(/^\d+\.\s/, "");
+      const num = line.match(/^(\d+)/)[1];
+      result.push(
+        <div key={i} style={{ display: "flex", gap: "10px", marginBottom: "4px" }}>
+          <span style={{ color: "#FF4D00", fontFamily: "'Space Mono', monospace", fontSize: "12px", flexShrink: 0, minWidth: "18px" }}>{num}.</span>
+          <span style={{ color: "#C8C8C8", fontSize: "13px", lineHeight: "1.6" }}>{content}</span>
+        </div>
+      );
+    } else if (line.startsWith("---")) {
+      result.push(<hr key={i} style={{ border: "none", borderTop: "1px solid #1a1a1a", margin: "14px 0" }} />);
+    } else if (line.trim()) {
+      const parts = line.split(/\*\*(.*?)\*\*/g);
+      result.push(
+        <p key={i} style={{ color: "#C8C8C8", fontSize: "13px", lineHeight: "1.7", marginBottom: "6px" }}>
+          {parts.map((p, j) => j % 2 === 1 ? <strong key={j} style={{ color: "#fff" }}>{p}</strong> : p)}
+        </p>
+      );
+    } else {
+      result.push(<div key={i} style={{ height: "5px" }} />);
+    }
+    i++;
+  }
+  return result;
+}
+
+function buildSystemContext(profile) {
+  const filled = PROFILE_FIELDS.filter(f => profile[f.key]?.trim());
+  if (!filled.length) return SYSTEM_PROMPT;
+  const ctx = filled.map(f => `- ${f.label}: ${profile[f.key]}`).join("\n");
+  return `${SYSTEM_PROMPT}\n\nUSER'S BRAND PROFILE (always reference this context in your responses):\n${ctx}`;
+}
+
+export default function BrandScalingAgent() {
+  const [phase, setPhase] = useState("home");
+  const [mode, setMode] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [profile, setProfile] = useState({});
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [sessionHistory, setSessionHistory] = useState([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+  const bottomRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const p = await window.storage.get("brand-profile");
+        if (p?.value) setProfile(JSON.parse(p.value));
+      } catch (_) {}
+      setProfileLoaded(true);
+      try {
+        const h = await window.storage.get("session-history");
+        if (h?.value) setSessionHistory(JSON.parse(h.value));
+      } catch (_) {}
+      setHistoryLoaded(true);
+    };
+    load();
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  const saveProfile = async (p) => {
+    setSaveStatus("saving");
+    try {
+      await window.storage.set("brand-profile", JSON.stringify(p));
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus(""), 2500);
+    } catch (_) { setSaveStatus(""); }
+  };
+
+  const saveHistory = async (sessions) => {
+    try {
+      await window.storage.set("session-history", JSON.stringify(sessions.slice(0, 10)));
+    } catch (_) {}
+  };
+
+  const selectMode = (m) => {
+    setMode(m);
+    setMessages([]);
+    let starter = STARTERS[m.id];
+    if (profile.brandName) starter = starter.replace("[NAME]", profile.brandName);
+    setInput(starter);
+    setPhase("chat");
+    setTimeout(() => textareaRef.current?.focus(), 100);
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim() || loading) return;
+    const userMsg = input.trim();
+    setInput("");
+    setLoading(true);
+    const newMessages = [...messages, { role: "user", content: userMsg }];
+    setMessages(newMessages);
+    const systemWithProfile = buildSystemContext(profile);
+    const apiMessages = newMessages.map((m, i) => ({
+      role: m.role,
+      content: i === 0 && mode ? `MODE: ${mode.id}\n\n${m.content}` : m.content,
+    }));
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json",
+  "x-api-key": import.meta.env.VITE_ANTHROPIC_KEY,
+  "anthropic-version": "2023-06-01"
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: systemWithProfile,
+          messages: apiMessages,
+        }),
+      });
+      const data = await res.json();
+      const reply = data.content?.find(b => b.type === "text")?.text || "No response.";
+      const finalMessages = [...newMessages, { role: "assistant", content: reply }];
+      setMessages(finalMessages);
+      const newSession = {
+        id: Date.now().toString(),
+        mode: mode?.id || "FREE",
+        modeLabel: mode?.label || "Free Chat",
+        modeColor: mode?.color || "#888",
+        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        preview: userMsg.slice(0, 90) + (userMsg.length > 90 ? "..." : ""),
+        messages: finalMessages,
+      };
+      const updated = [newSession, ...sessionHistory].slice(0, 10);
+      setSessionHistory(updated);
+      saveHistory(updated);
+    } catch (e) {
+      setMessages(prev => [...prev, { role: "assistant", content: "Error reaching API. Please try again." }]);
+    }
+    setLoading(false);
+  };
+
+  const handleKey = (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendMessage();
+  };
+
+  const loadSession = (session) => {
+    const m = MODES.find(x => x.id === session.mode) || null;
+    setMode(m);
+    setMessages(session.messages);
+    setPhase("chat");
+  };
+
+  const deleteSession = async (id) => {
+    const updated = sessionHistory.filter(s => s.id !== id);
+    setSessionHistory(updated);
+    saveHistory(updated);
+  };
+
+  const reset = () => { setPhase("home"); setMode(null); setMessages([]); setInput(""); };
+  const hasProfile = PROFILE_FIELDS.some(f => profile[f.key]?.trim());
+
+  const NavBtn = ({ label, active, dot, onClick }) => (
+    <button onClick={onClick} style={{
+      background: active ? "#FF4D00" : "transparent",
+      border: `1px solid ${active ? "#FF4D00" : "#1a1a1a"}`,
+      color: active ? "#fff" : "#3a3a3a", fontSize: "9px", padding: "5px 10px",
+      fontFamily: "'Space Mono', monospace", letterSpacing: "0.08em", cursor: "pointer",
+      position: "relative", transition: "all 0.15s",
+    }}
+      onMouseEnter={e => { if (!active) { e.currentTarget.style.borderColor = "#333"; e.currentTarget.style.color = "#777"; } }}
+      onMouseLeave={e => { if (!active) { e.currentTarget.style.borderColor = "#1a1a1a"; e.currentTarget.style.color = "#3a3a3a"; } }}
+    >
+      {label}
+      {dot && <span style={{ position: "absolute", top: "3px", right: "3px", width: "4px", height: "4px", background: "#76FF03", borderRadius: "50%" }} />}
+    </button>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#080808", color: "#fff", fontFamily: "'Inter', sans-serif", display: "flex", flexDirection: "column" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-track { background: #080808; }
+        ::-webkit-scrollbar-thumb { background: #1e1e1e; border-radius: 2px; }
+        textarea { resize: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+        @keyframes blink { 50% { opacity: 0; } }
+        .fade-in { animation: fadeIn 0.35s ease; }
+      `}</style>
+
+      {/* HEADER */}
+      <div style={{ borderBottom: "1px solid #0f0f0f", padding: "13px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#080808", position: "sticky", top: 0, zIndex: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div onClick={reset} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ width: "28px", height: "28px", background: "#FF4D00", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontFamily: "'Space Mono', monospace", fontWeight: 700 }}>▲</div>
+            <div>
+              <div style={{ fontSize: "11px", fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: "0.06em" }}>BRAND SCALE AI</div>
+              <div style={{ fontSize: "8px", color: "#333", letterSpacing: "0.12em" }}>ELITE GROWTH STRATEGIST</div>
+            </div>
+          </div>
+          {mode && phase === "chat" && (
+            <div style={{ padding: "3px 8px", background: "#0f0f0f", border: `1px solid ${mode.color}33`, fontSize: "8px", fontFamily: "'Space Mono', monospace", color: mode.color, letterSpacing: "0.1em" }}>
+              {mode.icon} {mode.id}
+            </div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: "6px" }}>
+          <NavBtn label="PROFILE" active={phase === "profile"} dot={hasProfile} onClick={() => setPhase(phase === "profile" ? "home" : "profile")} />
+          <NavBtn label={`HISTORY${sessionHistory.length > 0 ? ` (${sessionHistory.length})` : ""}`} active={phase === "history"} onClick={() => setPhase(phase === "history" ? "home" : "history")} />
+          {phase === "chat" && <NavBtn label="← NEW" onClick={reset} />}
+        </div>
+      </div>
+
+      {/* HOME */}
+      {phase === "home" && (
+        <div style={{ flex: 1, padding: "36px 22px", maxWidth: "880px", width: "100%", margin: "0 auto" }}>
+          <div style={{ marginBottom: "36px" }}>
+            <div style={{ fontSize: "9px", color: "#FF4D00", letterSpacing: "0.2em", fontFamily: "'Space Mono', monospace", marginBottom: "12px" }}>▲ DIRECT-RESPONSE BRAND STRATEGIST</div>
+            <h1 style={{ fontSize: "clamp(26px, 5vw, 46px)", fontWeight: 700, lineHeight: 1.1, fontFamily: "'Space Mono', monospace", letterSpacing: "-0.02em", marginBottom: "12px" }}>
+              Your Brand Has a<br /><span style={{ color: "#FF4D00" }}>Scaling Problem.</span><br />Let's Find It.
+            </h1>
+            <p style={{ color: "#3a3a3a", fontSize: "13px", lineHeight: "1.7", maxWidth: "460px" }}>
+              No generic advice. Elite-level diagnosis and systems thinking.{" "}
+              {hasProfile && <span style={{ color: "#76FF03" }}>Brand profile loaded ✓</span>}
+            </p>
+          </div>
+
+          {!hasProfile && profileLoaded && (
+            <div style={{ marginBottom: "24px", padding: "13px 16px", border: "1px solid #141414", background: "#0d0d0d", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+              <div>
+                <div style={{ fontSize: "9px", color: "#FFD600", fontFamily: "'Space Mono', monospace", letterSpacing: "0.1em", marginBottom: "3px" }}>⚡ SET UP YOUR BRAND PROFILE</div>
+                <p style={{ fontSize: "11px", color: "#333" }}>Save your brand details once — the agent remembers them every session.</p>
+              </div>
+              <button onClick={() => setPhase("profile")} style={{ background: "transparent", border: "1px solid #222", color: "#666", padding: "7px 12px", fontSize: "9px", fontFamily: "'Space Mono', monospace", letterSpacing: "0.06em", cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}>
+                ADD PROFILE →
+              </button>
+            </div>
+          )}
+
+          <div style={{ marginBottom: "8px" }}>
+            <div style={{ fontSize: "8px", color: "#1e1e1e", letterSpacing: "0.15em", fontFamily: "'Space Mono', monospace", marginBottom: "12px" }}>SELECT YOUR MODE</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "8px" }}>
+              {MODES.map((m) => (
+                <button key={m.id} onClick={() => selectMode(m)} style={{
+                  background: "#0b0b0b", padding: "16px", textAlign: "left",
+                  border: "1px solid #141414", display: "flex", flexDirection: "column", gap: "7px",
+                  transition: "all 0.18s", cursor: "pointer",
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = m.color + "55"; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.background = "#0f0f0f"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#141414"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.background = "#0b0b0b"; }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
+                    <span style={{ fontSize: "17px", color: m.color }}>{m.icon}</span>
+                    <span style={{ fontSize: "9px", fontFamily: "'Space Mono', monospace", fontWeight: 700, color: "#ddd", letterSpacing: "0.05em" }}>{m.label.toUpperCase()}</span>
+                  </div>
+                  <p style={{ fontSize: "11px", color: "#3a3a3a", lineHeight: "1.5" }}>{m.desc}</p>
+                  <div style={{ fontSize: "8px", color: m.color, fontFamily: "'Space Mono', monospace" }}>ACTIVATE →</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginTop: "20px", borderTop: "1px solid #0d0d0d", paddingTop: "18px" }}>
+            <div style={{ fontSize: "8px", color: "#1a1a1a", letterSpacing: "0.15em", fontFamily: "'Space Mono', monospace", marginBottom: "9px" }}>OR ASK ANYTHING</div>
+            <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
+              <div style={{ flex: 1, background: "#0b0b0b", border: "1px solid #141414", padding: "13px 14px" }}>
+                <textarea ref={textareaRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
+                  placeholder="Describe your brand situation, drop your metrics, paste a creative..."
+                  style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: "13px", lineHeight: "1.6", outline: "none", height: "52px", fontFamily: "inherit" }} />
+              </div>
+              <button onClick={() => { setPhase("chat"); sendMessage(); }} disabled={!input.trim()}
+                style={{ background: input.trim() ? "#FF4D00" : "#0f0f0f", border: "none", color: input.trim() ? "#fff" : "#222", padding: "13px 18px", fontSize: "17px", transition: "all 0.15s", cursor: input.trim() ? "pointer" : "default", minHeight: "78px" }}>
+                →
+              </button>
+            </div>
+            <div style={{ fontSize: "8px", color: "#151515", marginTop: "5px", fontFamily: "'Space Mono', monospace" }}>⌘+ENTER TO SEND</div>
+          </div>
+        </div>
+      )}
+
+      {/* PROFILE */}
+      {phase === "profile" && (
+        <div style={{ flex: 1, padding: "32px 22px", maxWidth: "640px", width: "100%", margin: "0 auto" }}>
+          <div style={{ marginBottom: "26px" }}>
+            <div style={{ fontSize: "8px", color: "#FF4D00", letterSpacing: "0.2em", fontFamily: "'Space Mono', monospace", marginBottom: "9px" }}>▲ BRAND PROFILE</div>
+            <h2 style={{ fontSize: "20px", fontWeight: 700, fontFamily: "'Space Mono', monospace", marginBottom: "7px" }}>Your Brand Context</h2>
+            <p style={{ color: "#333", fontSize: "12px", lineHeight: "1.6" }}>
+              Fill this in once. The agent will use it automatically in every session — no more re-explaining your brand. Saved persistently to your account.
+            </p>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            {PROFILE_FIELDS.map(field => (
+              <div key={field.key}>
+                <div style={{ fontSize: "8px", color: "#444", letterSpacing: "0.15em", fontFamily: "'Space Mono', monospace", marginBottom: "5px" }}>{field.label.toUpperCase()}</div>
+                <input value={profile[field.key] || ""} onChange={e => setProfile(prev => ({ ...prev, [field.key]: e.target.value }))}
+                  placeholder={field.placeholder}
+                  style={{ width: "100%", background: "#0b0b0b", border: "1px solid #141414", color: "#ddd", fontSize: "13px", padding: "11px 13px", outline: "none", fontFamily: "inherit", transition: "border-color 0.15s" }}
+                  onFocus={e => e.target.style.borderColor = "#FF4D00"}
+                  onBlur={e => e.target.style.borderColor = "#141414"} />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: "10px", marginTop: "22px", alignItems: "center" }}>
+            <button onClick={() => saveProfile(profile)} style={{ background: "#FF4D00", border: "none", color: "#fff", padding: "11px 22px", fontSize: "10px", fontFamily: "'Space Mono', monospace", letterSpacing: "0.08em", cursor: "pointer" }}>
+              SAVE PROFILE
+            </button>
+            {saveStatus === "saving" && <span style={{ fontSize: "9px", color: "#444", fontFamily: "'Space Mono', monospace" }}>SAVING...</span>}
+            {saveStatus === "saved" && <span style={{ fontSize: "9px", color: "#76FF03", fontFamily: "'Space Mono', monospace" }}>✓ SAVED TO YOUR ACCOUNT</span>}
+            <button onClick={() => { setProfile({}); saveProfile({}); }} style={{ background: "transparent", border: "1px solid #141414", color: "#2a2a2a", padding: "11px 14px", fontSize: "9px", fontFamily: "'Space Mono', monospace", letterSpacing: "0.06em", cursor: "pointer" }}>
+              CLEAR
+            </button>
+          </div>
+          {hasProfile && (
+            <div style={{ marginTop: "22px", padding: "14px", background: "#0b0b0b", border: "1px solid #141414" }}>
+              <div style={{ fontSize: "8px", color: "#76FF03", letterSpacing: "0.15em", fontFamily: "'Space Mono', monospace", marginBottom: "9px" }}>✓ ACTIVE CONTEXT</div>
+              {PROFILE_FIELDS.filter(f => profile[f.key]?.trim()).map(f => (
+                <div key={f.key} style={{ display: "flex", gap: "10px", marginBottom: "5px" }}>
+                  <span style={{ fontSize: "9px", color: "#333", fontFamily: "'Space Mono', monospace", minWidth: "110px", flexShrink: 0 }}>{f.label}:</span>
+                  <span style={{ fontSize: "11px", color: "#888" }}>{profile[f.key]}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* HISTORY */}
+      {phase === "history" && (
+        <div style={{ flex: 1, padding: "32px 22px", maxWidth: "740px", width: "100%", margin: "0 auto" }}>
+          <div style={{ marginBottom: "26px", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: "8px", color: "#FF4D00", letterSpacing: "0.2em", fontFamily: "'Space Mono', monospace", marginBottom: "9px" }}>▲ SESSION HISTORY</div>
+              <h2 style={{ fontSize: "20px", fontWeight: 700, fontFamily: "'Space Mono', monospace", marginBottom: "7px" }}>Past Sessions</h2>
+              <p style={{ color: "#333", fontSize: "12px" }}>Last 10 sessions saved. Click any to reload the full conversation.</p>
+            </div>
+            {sessionHistory.length > 0 && (
+              <button onClick={async () => { setSessionHistory([]); try { await window.storage.set("session-history", JSON.stringify([])); } catch (_) {} }} style={{ background: "transparent", border: "1px solid #141414", color: "#2a2a2a", padding: "7px 11px", fontSize: "8px", fontFamily: "'Space Mono', monospace", letterSpacing: "0.08em", cursor: "pointer" }}>
+                CLEAR ALL
+              </button>
+            )}
+          </div>
+          {!historyLoaded && <div style={{ color: "#222", fontSize: "11px", fontFamily: "'Space Mono', monospace" }}>LOADING...</div>}
+          {historyLoaded && sessionHistory.length === 0 && (
+            <div style={{ padding: "36px", textAlign: "center", border: "1px solid #0f0f0f" }}>
+              <div style={{ fontSize: "9px", color: "#222", fontFamily: "'Space Mono', monospace", letterSpacing: "0.1em" }}>NO SESSIONS YET</div>
+              <p style={{ color: "#222", fontSize: "11px", marginTop: "7px" }}>Start a conversation and it'll appear here automatically.</p>
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {sessionHistory.map((session) => (
+              <div key={session.id} className="fade-in" style={{ background: "#0b0b0b", border: "1px solid #141414", padding: "14px 16px", display: "flex", alignItems: "center", gap: "14px", transition: "border-color 0.15s", cursor: "pointer" }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = "#2a2a2a"}
+                onMouseLeave={e => e.currentTarget.style.borderColor = "#141414"}
+                onClick={() => loadSession(session)}>
+                <div style={{ fontSize: "18px", color: session.modeColor || "#555", flexShrink: 0 }}>
+                  {MODES.find(m => m.id === session.mode)?.icon || "◌"}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "8px", fontFamily: "'Space Mono', monospace", color: session.modeColor || "#555", letterSpacing: "0.08em" }}>{session.mode}</span>
+                    <span style={{ fontSize: "8px", color: "#2a2a2a", fontFamily: "'Space Mono', monospace" }}>{session.date}</span>
+                    <span style={{ fontSize: "8px", color: "#1e1e1e", fontFamily: "'Space Mono', monospace" }}>{session.messages.length} msgs</span>
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.preview}</div>
+                </div>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: "9px", color: "#FF4D00", fontFamily: "'Space Mono', monospace" }}>RELOAD →</span>
+                  <button onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }} style={{ background: "transparent", border: "none", color: "#222", fontSize: "16px", cursor: "pointer", padding: "0 3px", lineHeight: 1 }}
+                    onMouseEnter={e => e.target.style.color = "#aa2222"} onMouseLeave={e => e.target.style.color = "#222"}>×</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* CHAT */}
+      {phase === "chat" && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", maxWidth: "840px", width: "100%", margin: "0 auto", padding: "0 22px" }}>
+          {hasProfile && (
+            <div style={{ padding: "7px 0", borderBottom: "1px solid #0d0d0d", display: "flex", gap: "14px", overflowX: "auto" }}>
+              {PROFILE_FIELDS.filter(f => profile[f.key]?.trim()).slice(0, 5).map(f => (
+                <div key={f.key} style={{ display: "flex", gap: "5px", flexShrink: 0, alignItems: "center" }}>
+                  <span style={{ fontSize: "7px", color: "#2a2a2a", fontFamily: "'Space Mono', monospace", letterSpacing: "0.08em" }}>{f.label.toUpperCase()}:</span>
+                  <span style={{ fontSize: "10px", color: "#555" }}>{profile[f.key]}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ flex: 1, overflowY: "auto", padding: "22px 0" }}>
+            {messages.map((msg, i) => (
+              <div key={i} className="fade-in" style={{ marginBottom: "20px", display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start" }}>
+                <div style={{ fontSize: "7px", color: "#222", letterSpacing: "0.15em", fontFamily: "'Space Mono', monospace", marginBottom: "5px" }}>
+                  {msg.role === "user" ? "YOU" : "▲ BRAND SCALE AI"}
+                </div>
+                {msg.role === "user" ? (
+                  <div style={{ background: "#0d0d0d", border: "1px solid #141414", padding: "11px 15px", maxWidth: "70%", fontSize: "13px", color: "#bbb", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>
+                    {msg.content}
+                  </div>
+                ) : (
+                  <div style={{ borderLeft: "2px solid #FF4D00", paddingLeft: "16px", maxWidth: "100%" }}>
+                    {parseMarkdown(msg.content)}
+                  </div>
+                )}
+              </div>
+            ))}
+            {loading && (
+              <div className="fade-in" style={{ marginBottom: "20px" }}>
+                <div style={{ fontSize: "7px", color: "#222", letterSpacing: "0.15em", fontFamily: "'Space Mono', monospace", marginBottom: "5px" }}>▲ BRAND SCALE AI</div>
+                <div style={{ borderLeft: "2px solid #FF4D00", paddingLeft: "16px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ color: "#FF4D00", fontFamily: "'Space Mono', monospace", fontSize: "10px", animation: "pulse 1.5s ease-in-out infinite" }}>DIAGNOSING</span>
+                  <span style={{ color: "#FF4D00", animation: "blink 1s step-end infinite" }}>▌</span>
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+          <div style={{ borderTop: "1px solid #0d0d0d", padding: "13px 0 18px", display: "flex", gap: "8px", alignItems: "flex-end" }}>
+            <div style={{ flex: 1, background: "#0b0b0b", border: "1px solid #141414", padding: "11px 13px" }}>
+              <textarea ref={textareaRef} value={input}
+                onChange={e => { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 130) + "px"; }}
+                onKeyDown={handleKey} placeholder="Follow up, add metrics, ask to go deeper..."
+                style={{ width: "100%", background: "transparent", border: "none", color: "#ddd", fontSize: "13px", lineHeight: "1.6", outline: "none", height: "38px", fontFamily: "inherit", overflow: "hidden" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-end" }}>
+              <button onClick={sendMessage} disabled={!input.trim() || loading} style={{ background: input.trim() && !loading ? "#FF4D00" : "#0f0f0f", border: "none", color: input.trim() && !loading ? "#fff" : "#1e1e1e", padding: "11px 17px", fontSize: "16px", transition: "all 0.15s", cursor: input.trim() && !loading ? "pointer" : "default" }}>→</button>
+              <div style={{ fontSize: "7px", color: "#111", fontFamily: "'Space Mono', monospace" }}>⌘+↩</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
